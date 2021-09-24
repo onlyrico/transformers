@@ -13,12 +13,14 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-
+import copy
+import os
+import tempfile
 import unittest
 
 from transformers import is_torch_available
 from transformers.testing_utils import (
-    DUMMY_UNKWOWN_IDENTIFIER,
+    DUMMY_UNKNOWN_IDENTIFIER,
     SMALL_MODEL_IDENTIFIER,
     require_scatter,
     require_torch,
@@ -27,6 +29,8 @@ from transformers.testing_utils import (
 
 
 if is_torch_available():
+    import torch
+
     from transformers import (
         AutoConfig,
         AutoModel,
@@ -46,8 +50,11 @@ if is_torch_available():
         BertForSequenceClassification,
         BertForTokenClassification,
         BertModel,
+        FunnelBaseModel,
+        FunnelModel,
         GPT2Config,
         GPT2LMHeadModel,
+        PreTrainedModel,
         RobertaForMaskedLM,
         T5Config,
         T5ForConditionalGeneration,
@@ -72,6 +79,44 @@ if is_torch_available():
     from transformers.models.tapas.modeling_tapas import TAPAS_PRETRAINED_MODEL_ARCHIVE_LIST
 
 
+if is_torch_available():
+
+    class FakeModel(PreTrainedModel):
+        config_class = BertConfig
+        base_model_prefix = "fake"
+
+        def __init__(self, config):
+            super().__init__(config)
+            self.linear = torch.nn.Linear(config.hidden_size, config.hidden_size)
+
+        def forward(self, x):
+            return self.linear(x)
+
+        def _init_weights(self, module):
+            pass
+
+
+# Make sure this is synchronized with the model above.
+FAKE_MODEL_CODE = """
+import torch
+from transformers import BertConfig, PreTrainedModel
+
+class FakeModel(PreTrainedModel):
+    config_class = BertConfig
+    base_model_prefix = "fake"
+
+    def __init__(self, config):
+        super().__init__(config)
+        self.linear = torch.nn.Linear(config.hidden_size, config.hidden_size)
+
+    def forward(self, x):
+        return self.linear(x)
+
+    def _init_weights(self, module):
+        pass
+"""
+
+
 @require_torch
 class AutoModelTest(unittest.TestCase):
     @slow
@@ -85,8 +130,11 @@ class AutoModelTest(unittest.TestCase):
             model, loading_info = AutoModel.from_pretrained(model_name, output_loading_info=True)
             self.assertIsNotNone(model)
             self.assertIsInstance(model, BertModel)
-            for value in loading_info.values():
-                self.assertEqual(len(value), 0)
+
+            self.assertEqual(len(loading_info["missing_keys"]), 0)
+            self.assertEqual(len(loading_info["unexpected_keys"]), 8)
+            self.assertEqual(len(loading_info["mismatched_keys"]), 0)
+            self.assertEqual(len(loading_info["error_msgs"]), 0)
 
     @slow
     def test_model_for_pretraining_from_pretrained(self):
@@ -213,10 +261,25 @@ class AutoModelTest(unittest.TestCase):
         self.assertEqual(model.num_parameters(only_trainable=True), 14410)
 
     def test_from_identifier_from_model_type(self):
-        model = AutoModelWithLMHead.from_pretrained(DUMMY_UNKWOWN_IDENTIFIER)
+        model = AutoModelWithLMHead.from_pretrained(DUMMY_UNKNOWN_IDENTIFIER)
         self.assertIsInstance(model, RobertaForMaskedLM)
         self.assertEqual(model.num_parameters(), 14410)
         self.assertEqual(model.num_parameters(only_trainable=True), 14410)
+
+    def test_from_pretrained_with_tuple_values(self):
+        # For the auto model mapping, FunnelConfig has two models: FunnelModel and FunnelBaseModel
+        model = AutoModel.from_pretrained("sgugger/funnel-random-tiny")
+        self.assertIsInstance(model, FunnelModel)
+
+        config = copy.deepcopy(model.config)
+        config.architectures = ["FunnelBaseModel"]
+        model = AutoModel.from_config(config)
+        self.assertIsInstance(model, FunnelBaseModel)
+
+        with tempfile.TemporaryDirectory() as tmp_dir:
+            model.save_pretrained(tmp_dir)
+            model = AutoModel.from_pretrained(tmp_dir)
+            self.assertIsInstance(model, FunnelBaseModel)
 
     def test_parents_and_children_in_mappings(self):
         # Test that the children are placed before the parents in the mappings, as the `instanceof` will be triggered
@@ -242,6 +305,28 @@ class AutoModelTest(unittest.TestCase):
                     assert not issubclass(
                         child_config, parent_config
                     ), f"{child_config.__name__} is child of {parent_config.__name__}"
-                    assert not issubclass(
-                        child_model, parent_model
-                    ), f"{child_config.__name__} is child of {parent_config.__name__}"
+
+                    # Tuplify child_model and parent_model since some of them could be tuples.
+                    if not isinstance(child_model, (list, tuple)):
+                        child_model = (child_model,)
+                    if not isinstance(parent_model, (list, tuple)):
+                        parent_model = (parent_model,)
+
+                    for child, parent in [(a, b) for a in child_model for b in parent_model]:
+                        assert not issubclass(child, parent), f"{child.__name__} is child of {parent.__name__}"
+
+    def test_from_pretrained_dynamic_model(self):
+        config = BertConfig(
+            vocab_size=99, hidden_size=32, num_hidden_layers=5, num_attention_heads=4, intermediate_size=37
+        )
+        config.auto_map = {"AutoModel": "modeling.FakeModel"}
+        model = FakeModel(config)
+
+        with tempfile.TemporaryDirectory() as tmp_dir:
+            model.save_pretrained(tmp_dir)
+            with open(os.path.join(tmp_dir, "modeling.py"), "w") as f:
+                f.write(FAKE_MODEL_CODE)
+
+            new_model = AutoModel.from_pretrained(tmp_dir, trust_remote_code=True)
+            for p1, p2 in zip(model.parameters(), new_model.parameters()):
+                self.assertTrue(torch.equal(p1, p2))

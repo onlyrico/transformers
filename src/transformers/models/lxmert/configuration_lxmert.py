@@ -95,9 +95,9 @@ class LxmertConfig(PretrainedConfig):
             Whether or not to add masked language modeling (as used in pretraining models such as BERT) to the loss
             objective.
         task_obj_predict (:obj:`bool`, `optional`, defaults to :obj:`True`):
-            Whether or not to add object prediction, attribute ppredictionand feature regression to the loss objective.
+            Whether or not to add object prediction, attribute prediction and feature regression to the loss objective.
         task_qa (:obj:`bool`, `optional`, defaults to :obj:`True`):
-            Whether or not to add the question-asansweringoss to the objective
+            Whether or not to add the question-answering loss to the objective
         visual_obj_loss (:obj:`bool`, `optional`, defaults to :obj:`True`):
             Whether or not to calculate the object-prediction loss objective
         visual_attr_loss (:obj:`bool`, `optional`, defaults to :obj:`True`):
@@ -113,13 +113,13 @@ class LxmertConfig(PretrainedConfig):
     """
 
     model_type = "lxmert"
+    attribute_map = {}
 
     def __init__(
         self,
         vocab_size=30522,
         hidden_size=768,
         num_attention_heads=12,
-        num_labels=2,
         num_qa_labels=9500,
         num_object_labels=1600,
         num_attr_labels=400,
@@ -149,11 +149,9 @@ class LxmertConfig(PretrainedConfig):
         output_hidden_states=False,
         **kwargs,
     ):
-        super().__init__(**kwargs)
         self.vocab_size = vocab_size
         self.hidden_size = hidden_size
         self.num_attention_heads = num_attention_heads
-        self.num_labels = num_labels
         self.hidden_act = hidden_act
         self.intermediate_size = intermediate_size
         self.hidden_dropout_prob = hidden_dropout_prob
@@ -179,5 +177,6 @@ class LxmertConfig(PretrainedConfig):
         self.visual_attr_loss = visual_attr_loss
         self.visual_feat_loss = visual_feat_loss
         self.output_hidden_states = output_hidden_states
-        self.output_attentions = self.output_attentions
+        self.output_attentions = output_attentions
         self.num_hidden_layers = {"vision": r_layers, "cross_encoder": x_layers, "language": l_layers}
+        super().__init__(**kwargs)

@@ -39,7 +39,8 @@ and code publicly available. Human evaluations show our best models are superior
 dialogue in terms of engagingness and humanness measurements. We then discuss the limitations of this work by analyzing
 failure cases of our models.*
 
-The authors' code can be found `here <https://github.com/facebookresearch/ParlAI>`__ .
+This model was contributed by `patrickvonplaten <https://huggingface.co/patrickvonplaten>`__. The authors' code can be
+found `here <https://github.com/facebookresearch/ParlAI>`__ .
 
 BlenderbotSmallConfig
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
@@ -54,6 +55,13 @@ BlenderbotSmallTokenizer
 .. autoclass:: transformers.BlenderbotSmallTokenizer
     :members: build_inputs_with_special_tokens, get_special_tokens_mask,
         create_token_type_ids_from_sequences, save_vocabulary
+
+
+BlenderbotSmallTokenizerFast
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+
+.. autoclass:: transformers.BlenderbotSmallTokenizerFast
+    :members:
 
 
 BlenderbotSmallModel
